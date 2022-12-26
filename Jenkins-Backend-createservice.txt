@@ -1,0 +1,25 @@
+pipeline {
+    agent any
+    stages{
+        stage('Login ECR') {
+            steps {
+                sh ("aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/b8v4t5d9")
+                sh ("rm -rf /var/lib/jenkins/API-MasterData/ShareService.API/appsettings.json ")
+                sh 'aws ssm get-parameter --name "appsettings.json" --output text --query Parameter.Value >> /var/lib/jenkins/API-MasterData/ShareService.API/appsettings.json'
+            }
+        }
+        stage('Build Docker') { 
+            steps {
+                sh ("docker build -t api-masterdata-jenkins:dev /var/lib/jenkins/API-MasterData ")
+		        sh ("docker tag api-masterdata-jenkins:dev public.ecr.aws/b8v4t5d9/api-masterdata-jenkins:dev")
+            }
+        }
+        stage('Deploy to ECS') { 
+            steps {
+                sh("docker push public.ecr.aws/b8v4t5d9/api-masterdata-jenkins:dev")
+                sh("aws ecs register-task-definition --family api-masterdata-jenkins  --cli-input-json file:///var/lib/jenkins/taskdef.json --region ap-southeast-1")
+                sh 'aws ecs create-service --service-name api-masterdata-jenkins --desired-count 1 --task-definition api-masterdata-jenkins --launch-type "FARGATE" --network-configuration  "awsvpcConfiguration={assignPublicIp=ENABLED,securityGroups=[sg-08f04148a449a3135],subnets=[subnet-06e9ca998e2285fb7]}"  --cluster api-masterdata-nghianv2'
+            }
+        }
+    }
+    }

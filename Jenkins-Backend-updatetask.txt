@@ -1,0 +1,39 @@
+pipeline {
+    agent any
+    parameters {
+        string defaultValue: '/var/lib/jenkins/API-MasterData/ShareService.API/appsettings.json', name: 'APP_SETTINGS'
+        string defaultValue: 'api-masterdata-jenkins', name: 'CONTAINER_NAME'
+        string defaultValue: 'dev', name: 'BUILD_VER'
+        string defaultValue: 'public.ecr.aws/b8v4t5d9/api-masterdata-jenkins', name: 'ECR_REPO'
+        string defaultValue: 'api-masterdata-jenkins', name: 'FG_TD_FAMILY'
+        string defaultValue: 'file:///var/lib/jenkins/taskdef.json', name: 'FG_TD_FILE'
+        string defaultValue: 'ap-southeast-1', name: 'REGION'
+        string defaultValue: 'api-masterdata-nghianv2', name: 'FG_CLUSTER'
+        string defaultValue: 'api-masterdata-jenkins', name: 'FG_SERVICE'
+        string defaultValue: '/var/lib/jenkins/API-MasterData', name: 'DOCKER_PATH'
+    }
+    stages{
+        stage('Login ECR') {
+            steps {
+                sh("aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/b8v4t5d9")
+                sh("echo ${params.PATH}")
+                sh("rm -rf ${params.APP_SETTINGS}") 
+                sh'aws ssm get-parameter --name "appsettings.json" --output text --query Parameter.Value >> $APP_SETTINGS'
+            }
+        }
+        stage('Docker Buid') {
+            steps {
+                sh("docker build -t ${params.CONTAINER_NAME}:${params.BUILD_VER} ${params.DOCKER_PATH}")
+                sh("docker tag ${params.CONTAINER_NAME}:${params.BUILD_VER} ${params.ECR_REPO}:${params.BUILD_VER}")
+            }
+        }
+        stage('Update Service') {
+            steps {
+                sh("docker push $ECR_REPO:$BUILD_VER")
+                sh("aws ecs register-task-definition --family ${params.FG_TD_FAMILY}  --cli-input-json ${params.FG_TD_FILE} --region ${params.REGION}")
+                sh("aws ecs update-service --cluster ${params.FG_CLUSTER} --service ${params.FG_SERVICE} --task-definition ${params.FG_TD_FAMILY} --region ${params.REGION}")
+            }
+        }
+
+    }
+}

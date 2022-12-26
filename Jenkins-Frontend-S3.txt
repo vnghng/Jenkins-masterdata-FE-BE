@@ -1,0 +1,30 @@
+pipeline {
+    agent any
+    parameters {
+        string defaultValue: 's3://cicdenvfemasterdata/.env', name: 'S3_ENV_FILE'
+        string defaultValue: 's3://frontend-masterdata-nghianv2/', name: 'S3_BUCKET'
+        string defaultValue: 'E2LBWPI9DNCQ19', name: 'CF_ID'
+        string defaultValue: '/var/lib/jenkins/FE-MasterData', name: 'ENV_FILE'
+        string defaultValue: 'build-sit', name: 'ENV_BUILD_NGHIANV2'
+        string defaultValue: '/var/lib/jenkins/FE-MasterData/dist', name: 'BUILD_LOCATE'
+    }
+    stages{
+        stage('Download from S3') {
+            steps {
+                sh (" aws s3 cp ${params.S3_ENV_FILE} ${ENV_FILE}")
+            }
+        }
+        stage('Build Front End') { 
+            steps {
+                sh ("npm i --force ${ENV_FILE}")
+		        sh ("npm run ${params.ENV_BUILD_NGHIANV2} --prefix ${ENV_FILE}")
+            }
+        }
+        stage('Deploy to S3') { 
+            steps {
+                sh("aws s3 cp ${params.BUILD_LOCATE} ${params.S3_BUCKET} --recursive")
+                sh"aws cloudfront create-invalidation --distribution-id ${params.CF_ID} --paths \"/*\""
+            }
+        }
+    }
+}
